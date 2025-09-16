@@ -45,7 +45,7 @@ OPS_PER_SEC=50                       # Operations per second
 WORKERS=4                            # Number of worker threads
 MAX_POOL_SIZE=50                     # MongoDB connection pool size
 OP_MIX=find=70,insert=20,update=10   # Operation mix percentages
-SENTRY_DSN=                          # Sentry DSN for error monitoring
+SENTRY_DSN=<your-sentry-dsn>         # Sentry DSN for error monitoring
 LOG_LEVEL=INFO                       # Logging level
 ```
 
@@ -78,7 +78,7 @@ python main.py --uri "<your-mongodb-connection-string>" \
 # Custom operation mix with Sentry monitoring
 python main.py --uri "<your-mongodb-connection-string>" \
                --op-mix "find=60,insert=30,update=10" \
-               --sentry-dsn "https://your-sentry-dsn@sentry.io/project-id" \
+               --sentry-dsn "<your-sentry-dsn>" \
                --max-pool-size 100
 ```
 
@@ -117,16 +117,3 @@ The application includes a heartbeat mechanism that detects:
 - Connection pool exhaustion
 - Network connectivity issues
 - Database server unavailability
-
-## Architecture
-
-```
-├── main.py                 # Application entry point and configuration
-├── liveness/
-│   ├── __init__.py
-│   ├── monitoring.py       # Sentry integration and cluster info logging
-│   ├── rate_limiter.py     # Token bucket rate limiting implementation
-│   └── workload.py         # Workload generation and execution
-├── requirements.txt        # Python dependencies
-└── README.md              # This file
-```
