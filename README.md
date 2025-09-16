@@ -35,7 +35,7 @@ Create a `.env` file or set the following environment variables:
 
 ```bash
 # Required
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/
+MONGODB_URI=<your-mongodb-connection-string>
 
 # Optional (with defaults)
 MONGO_DB=liveness                    # Database name
@@ -66,7 +66,7 @@ python main.py --help
 python main.py
 
 # Using command line arguments
-python main.py --uri "mongodb+srv://user:pass@cluster.mongodb.net/" \
+python main.py --uri "<your-mongodb-connection-string>" \
                --total-docs 5000 \
                --ops-per-sec 100 \
                --workers 8
@@ -76,7 +76,7 @@ python main.py --uri "mongodb+srv://user:pass@cluster.mongodb.net/" \
 
 ```bash
 # Custom operation mix with Sentry monitoring
-python main.py --uri "mongodb+srv://user:pass@cluster.mongodb.net/" \
+python main.py --uri "<your-mongodb-connection-string>" \
                --op-mix "find=60,insert=30,update=10" \
                --sentry-dsn "https://your-sentry-dsn@sentry.io/project-id" \
                --max-pool-size 100
@@ -130,39 +130,3 @@ The application includes a heartbeat mechanism that detects:
 ├── requirements.txt        # Python dependencies
 └── README.md              # This file
 ```
-
-## Performance Considerations
-
-- **Connection Pooling**: Adjust `MAX_POOL_SIZE` based on your cluster's connection limits
-- **Worker Threads**: More workers can increase throughput but may cause connection pool contention
-- **Rate Limiting**: The token bucket algorithm ensures smooth operation distribution
-- **Memory Usage**: Large `TOTAL_DOCS` values will consume more memory for document caching
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Connection Timeouts**: Increase `serverSelectionTimeoutMS` or check network connectivity
-2. **Authentication Errors**: Verify MongoDB URI credentials and database permissions
-3. **Rate Limiting**: If operations seem slow, check the `OPS_PER_SEC` setting
-4. **Memory Usage**: Reduce `TOTAL_DOCS` if experiencing high memory consumption
-
-### Debug Mode
-
-Enable debug logging for detailed operation information:
-
-```bash
-LOG_LEVEL=DEBUG python main.py
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
