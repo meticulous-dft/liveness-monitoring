@@ -15,7 +15,7 @@ from bson.decimal128 import Decimal128
 from pymongo import ASCENDING
 from pymongo.collection import Collection
 
-from .monitoring import ensure_sharded_location_compound
+from .monitoring import ensure_sharded_id_hashed
 from .rate_limiter import TokenBucket
 
 try:
@@ -98,13 +98,12 @@ class WorkloadRunner:
 
     def start(self):
         coll = self.client[self.cfg.db_name][self.cfg.coll_name]
-        # Shard collection on {location: 1, _id: 'hashed'} when possible (mongos, permissions)
+        # Shard collection on {_id: 'hashed'} when possible (mongos, permissions)
         try:
-            ensure_sharded_location_compound(
+            ensure_sharded_id_hashed(
                 self.client,
                 self.cfg.db_name,
                 self.cfg.coll_name,
-                "location",
                 self._sentry_enabled,
             )
         except Exception:
@@ -389,15 +388,9 @@ class WorkloadRunner:
         n = max(coll.estimated_document_count(), 1)
         return rng.randrange(0, int(n))
 
-    def _random_location(self, rng: random.Random) -> str:
-        # Pick a random location from our predefined set for shard targeting
-        return rng.choice(ISO_ALPHA2)
-
     def _do_find(self, coll: Collection, rng: random.Random):
         k = self._random_key(coll, rng)
-        location = self._random_location(rng)
-        # Include location in query to target specific shard
-        coll.find_one({"k": k, "location": location})
+        coll.find_one({"k": k})
 
     def _do_insert(self, coll: Collection, rng: random.Random):
         k = self._random_key(coll, rng)
@@ -405,10 +398,8 @@ class WorkloadRunner:
 
     def _do_update(self, coll: Collection, rng: random.Random):
         k = self._random_key(coll, rng)
-        location = self._random_location(rng)
-        # Include location in query to target specific shard
         coll.update_one(
-            {"k": k, "location": location},
+            {"k": k},
             {"$inc": {"n": 1}, "$set": {"ts": time.time()}},
             upsert=True,
         )
