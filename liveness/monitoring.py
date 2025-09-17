@@ -88,15 +88,20 @@ def log_cluster_info(client, db_name: str, coll_name: str) -> None:
                 )
         else:
             logger.info("Collection %s.%s is not sharded", db_name, coll_name)
+    except Exception:
+        logger.debug("Unable to get collection stats")
 
 
-def ensure_sharded_id_hashed(client, db_name: str, coll_name: str, sentry_enabled: bool = False) -> None:
+def ensure_sharded_id_hashed(
+    client, db_name: str, coll_name: str, sentry_enabled: bool = False
+) -> None:
     """Best-effort: shard the collection on {_id: 'hashed'} when connected via mongos.
     - Creates the DB/collection if needed (no data inserted)
     - Enables sharding on the DB
     - Shards the collection on _id: 'hashed'
     Continues gracefully if not authorized or already sharded.
     """
+
     def _capture(e: Exception):
         if HAS_SENTRY and sentry_enabled:
             try:
@@ -110,7 +115,9 @@ def ensure_sharded_id_hashed(client, db_name: str, coll_name: str, sentry_enable
             hello = client.admin.command("hello")
         except Exception:
             hello = client.admin.command("isMaster")
-        is_mongos = bool(getattr(client, "is_mongos", False)) or hello.get("msg") == "isdbgrid"
+        is_mongos = (
+            bool(getattr(client, "is_mongos", False)) or hello.get("msg") == "isdbgrid"
+        )
     except Exception:
         is_mongos = False
 
@@ -122,7 +129,9 @@ def ensure_sharded_id_hashed(client, db_name: str, coll_name: str, sentry_enable
     try:
         stats = client[db_name].command("collStats", coll_name)
         if stats.get("sharded"):
-            logger.info("Collection %s.%s already sharded; skipping", db_name, coll_name)
+            logger.info(
+                "Collection %s.%s already sharded; skipping", db_name, coll_name
+            )
             return
     except Exception:
         # collStats might fail if collection doesn't exist yet; proceed to create+shard
@@ -151,10 +160,11 @@ def ensure_sharded_id_hashed(client, db_name: str, coll_name: str, sentry_enable
         )
         logger.info("Sharded %s.%s on {_id: 'hashed'}", db_name, coll_name)
     except Exception as e:
-        logger.info("Shard step skipped or failed (likely already sharded or unauthorized): %s", e)
+        logger.info(
+            "Shard step skipped or failed (likely already sharded or unauthorized): %s",
+            e,
+        )
         _capture(e)
-
-
 
 
 def ensure_sharded_location_compound(
@@ -168,6 +178,7 @@ def ensure_sharded_location_compound(
     Uses {<key_field>: 1, _id: 'hashed'} so writes route by location while distributing within a zone.
     No fallback will be attempted.
     """
+
     def _capture(e: Exception):
         if HAS_SENTRY and sentry_enabled:
             try:
@@ -181,7 +192,9 @@ def ensure_sharded_location_compound(
             hello = client.admin.command("hello")
         except Exception:
             hello = client.admin.command("isMaster")
-        is_mongos = bool(getattr(client, "is_mongos", False)) or hello.get("msg") == "isdbgrid"
+        is_mongos = (
+            bool(getattr(client, "is_mongos", False)) or hello.get("msg") == "isdbgrid"
+        )
     except Exception:
         is_mongos = False
 
@@ -193,7 +206,9 @@ def ensure_sharded_location_compound(
     try:
         stats = client[db_name].command("collStats", coll_name)
         if stats.get("sharded"):
-            logger.info("Collection %s.%s already sharded; skipping", db_name, coll_name)
+            logger.info(
+                "Collection %s.%s already sharded; skipping", db_name, coll_name
+            )
             return
     except Exception:
         # collStats might fail if collection doesn't exist yet; proceed
