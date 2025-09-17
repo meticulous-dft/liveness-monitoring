@@ -44,94 +44,10 @@ class WorkloadConfig:
     op_mix: Dict[str, float]
 
 
-# Extended ISO country codes for better shard distribution
+# Simple two-region setup for Global Cluster testing
 ISO_ALPHA2 = [
-    # Major regions for Global Clusters
-    "US",
-    "CA",
-    "MX",
-    "BR",
-    "AR",
-    "CL",
-    "CO",
-    "PE",  # Americas
-    "GB",
-    "DE",
-    "FR",
-    "IT",
-    "ES",
-    "NL",
-    "SE",
-    "NO",
-    "DK",
-    "FI",
-    "IE",
-    "PT",  # Europe
-    "RU",
-    "PL",
-    "CZ",
-    "HU",
-    "RO",
-    "BG",
-    "HR",
-    "SI",
-    "SK",
-    "LT",
-    "LV",
-    "EE",  # Eastern Europe
-    "CN",
-    "JP",
-    "KR",
-    "IN",
-    "SG",
-    "MY",
-    "TH",
-    "VN",
-    "PH",
-    "ID",
-    "AU",
-    "NZ",  # Asia-Pacific
-    "ZA",
-    "EG",
-    "NG",
-    "KE",
-    "MA",
-    "GH",
-    "TN",
-    "DZ",  # Africa
-    "AE",
-    "SA",
-    "TR",
-    "IL",
-    "JO",
-    "LB",
-    "KW",
-    "QA",  # Middle East
-    # Additional for better distribution
-    "CH",
-    "AT",
-    "BE",
-    "LU",
-    "IS",
-    "GR",
-    "CY",
-    "MT",
-    "UY",
-    "PY",
-    "BO",
-    "EC",
-    "VE",
-    "GT",
-    "CR",
-    "PA",
-    "BD",
-    "LK",
-    "NP",
-    "MM",
-    "KH",
-    "LA",
-    "BN",
-    "MN",
+    "US",  # United States (Americas region)
+    "DE",  # Germany (Europe region)
 ]
 
 logger = logging.getLogger("atlas_liveness.workload")
