@@ -15,7 +15,7 @@ from bson.decimal128 import Decimal128
 from pymongo import ASCENDING
 from pymongo.collection import Collection
 
-from .monitoring import ensure_sharded_id_hashed
+from .monitoring import ensure_sharded_location_compound
 from .rate_limiter import TokenBucket
 
 try:
@@ -44,28 +44,94 @@ class WorkloadConfig:
     op_mix: Dict[str, float]
 
 
-# Fallback ISO country codes for geosharding (if Faker not available)
+# Extended ISO country codes for better shard distribution
 ISO_ALPHA2 = [
+    # Major regions for Global Clusters
     "US",
     "CA",
+    "MX",
+    "BR",
+    "AR",
+    "CL",
+    "CO",
+    "PE",  # Americas
     "GB",
     "DE",
     "FR",
-    "IN",
-    "JP",
-    "CN",
-    "BR",
-    "AU",
-    "SG",
-    "NL",
-    "SE",
-    "CH",
     "IT",
     "ES",
-    "MX",
+    "NL",
+    "SE",
+    "NO",
+    "DK",
+    "FI",
+    "IE",
+    "PT",  # Europe
+    "RU",
+    "PL",
+    "CZ",
+    "HU",
+    "RO",
+    "BG",
+    "HR",
+    "SI",
+    "SK",
+    "LT",
+    "LV",
+    "EE",  # Eastern Europe
+    "CN",
+    "JP",
     "KR",
+    "IN",
+    "SG",
+    "MY",
+    "TH",
+    "VN",
+    "PH",
+    "ID",
+    "AU",
+    "NZ",  # Asia-Pacific
     "ZA",
+    "EG",
+    "NG",
+    "KE",
+    "MA",
+    "GH",
+    "TN",
+    "DZ",  # Africa
     "AE",
+    "SA",
+    "TR",
+    "IL",
+    "JO",
+    "LB",
+    "KW",
+    "QA",  # Middle East
+    # Additional for better distribution
+    "CH",
+    "AT",
+    "BE",
+    "LU",
+    "IS",
+    "GR",
+    "CY",
+    "MT",
+    "UY",
+    "PY",
+    "BO",
+    "EC",
+    "VE",
+    "GT",
+    "CR",
+    "PA",
+    "BD",
+    "LK",
+    "NP",
+    "MM",
+    "KH",
+    "LA",
+    "BN",
+    "MN",
 ]
 
 logger = logging.getLogger("atlas_liveness.workload")
@@ -95,19 +161,24 @@ class WorkloadRunner:
         self._sentry_enabled = sentry_enabled and HAS_SENTRY
         # Thread-local Faker instances (only if Faker is installed)
         self._tls = threading.local()
+        # Track what shard key was actually used
+        self._uses_location_shard_key = False
 
     def start(self):
         coll = self.client[self.cfg.db_name][self.cfg.coll_name]
-        # Shard collection on {_id: 'hashed'} when possible (mongos, permissions)
+        # Try compound sharding first (for Global Clusters), fallback to _id hashed
         try:
-            ensure_sharded_id_hashed(
+            ensure_sharded_location_compound(
                 self.client,
                 self.cfg.db_name,
                 self.cfg.coll_name,
+                "location",
                 self._sentry_enabled,
             )
+            # Check what shard key was actually used
+            self._detect_shard_key(coll)
         except Exception:
-            logger.debug("ensure_sharded_id_hashed: best-effort; continuing")
+            logger.debug("ensure_sharded_location_compound: best-effort; continuing")
         self._prepare_collection(coll)
         logger.info("Starting %d worker threads", self.cfg.workers)
         for i in range(self.cfg.workers):
@@ -180,6 +251,33 @@ class WorkloadRunner:
             except Exception:
                 fk = None
         return fk
+
+    def _detect_shard_key(self, coll: Collection):
+        """Detect what shard key is actually being used"""
+        try:
+            stats = self.client[self.cfg.db_name].command(
+                "collStats", self.cfg.coll_name
+            )
+            if stats.get("sharded"):
+                shard_key = stats.get("shardKey", {})
+                if "location" in shard_key:
+                    self._uses_location_shard_key = True
+                    logger.info("Detected location-based shard key: %s", shard_key)
+                else:
+                    self._uses_location_shard_key = False
+                    logger.info("Detected simple shard key: %s", shard_key)
+            else:
+                logger.info("Collection is not sharded")
+                self._uses_location_shard_key = False
+        except Exception:
+            logger.debug(
+                "Could not detect shard key, assuming no location-based sharding"
+            )
+            self._uses_location_shard_key = False
+
+    def _random_location(self, rng: random.Random) -> str:
+        """Pick a random location from our predefined set for shard targeting"""
+        return rng.choice(ISO_ALPHA2)
 
     def _make_doc(self, k: int) -> dict:
         fk = self._get_faker()
