@@ -389,9 +389,15 @@ class WorkloadRunner:
         n = max(coll.estimated_document_count(), 1)
         return rng.randrange(0, int(n))
 
+    def _random_location(self, rng: random.Random) -> str:
+        # Pick a random location from our predefined set for shard targeting
+        return rng.choice(ISO_ALPHA2)
+
     def _do_find(self, coll: Collection, rng: random.Random):
         k = self._random_key(coll, rng)
-        coll.find_one({"k": k})
+        location = self._random_location(rng)
+        # Include location in query to target specific shard
+        coll.find_one({"k": k, "location": location})
 
     def _do_insert(self, coll: Collection, rng: random.Random):
         k = self._random_key(coll, rng)
@@ -399,6 +405,10 @@ class WorkloadRunner:
 
     def _do_update(self, coll: Collection, rng: random.Random):
         k = self._random_key(coll, rng)
+        location = self._random_location(rng)
+        # Include location in query to target specific shard
         coll.update_one(
-            {"k": k}, {"$inc": {"n": 1}, "$set": {"ts": time.time()}}, upsert=True
+            {"k": k, "location": location},
+            {"$inc": {"n": 1}, "$set": {"ts": time.time()}},
+            upsert=True,
         )
