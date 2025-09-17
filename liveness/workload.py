@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
+from enum import Enum
 from typing import Dict
 
 from bson.binary import Binary
@@ -15,7 +16,7 @@ from bson.decimal128 import Decimal128
 from pymongo import ASCENDING
 from pymongo.collection import Collection
 
-from .monitoring import ensure_sharded_location_compound
+from .monitoring import ensure_sharded_location_compound, ensure_sharded_simple
 from .rate_limiter import TokenBucket
 
 try:
@@ -34,6 +35,14 @@ except Exception:
     HAS_FAKER = False
 
 
+class ClusterType(Enum):
+    """Enum to specify the type of MongoDB cluster for appropriate sharding strategy."""
+
+    REPLICA_SET = "replica_set"
+    SHARDED = "sharded"
+    GEOSHARDED = "geosharded"
+
+
 @dataclass
 class WorkloadConfig:
     db_name: str
@@ -42,6 +51,7 @@ class WorkloadConfig:
     ops_per_sec: float
     workers: int
     op_mix: Dict[str, float]
+    cluster_type: ClusterType
 
 
 # Simple two-region setup for Global Cluster testing
@@ -63,11 +73,12 @@ class WorkloadRunner:
         ops_per_sec: float,
         workers: int,
         op_mix: Dict[str, float],
+        cluster_type: ClusterType = ClusterType.REPLICA_SET,
         sentry_enabled: bool = False,
     ):
         self.client = client
         self.cfg = WorkloadConfig(
-            db_name, coll_name, total_docs, ops_per_sec, workers, op_mix
+            db_name, coll_name, total_docs, ops_per_sec, workers, op_mix, cluster_type
         )
         self._threads: list[threading.Thread] = []
         self._stop = threading.Event()
@@ -82,19 +93,8 @@ class WorkloadRunner:
 
     def start(self):
         coll = self.client[self.cfg.db_name][self.cfg.coll_name]
-        # Try compound sharding first (for Global Clusters), fallback to _id hashed
-        try:
-            ensure_sharded_location_compound(
-                self.client,
-                self.cfg.db_name,
-                self.cfg.coll_name,
-                "location",
-                self._sentry_enabled,
-            )
-            # Check what shard key was actually used
-            self._detect_shard_key(coll)
-        except Exception:
-            logger.debug("ensure_sharded_location_compound: best-effort; continuing")
+        # Apply sharding strategy based on cluster type
+        self._setup_sharding(coll)
         self._prepare_collection(coll)
         logger.info("Starting %d worker threads", self.cfg.workers)
         for i in range(self.cfg.workers):
@@ -115,6 +115,44 @@ class WorkloadRunner:
             t.join(timeout=5.0)
 
     # --- internals ---
+
+    def _setup_sharding(self, coll: Collection):
+        """Setup sharding strategy based on cluster type."""
+        try:
+            if self.cfg.cluster_type == ClusterType.GEOSHARDED:
+                # For geosharded clusters, use location-based compound shard key
+                ensure_sharded_location_compound(
+                    self.client,
+                    self.cfg.db_name,
+                    self.cfg.coll_name,
+                    "location",
+                    self._sentry_enabled,
+                )
+                logger.info("Applied geosharded strategy with location-based shard key")
+            elif self.cfg.cluster_type == ClusterType.SHARDED:
+                # For regular sharded clusters, use simple hash on _id
+                ensure_sharded_simple(
+                    self.client,
+                    self.cfg.db_name,
+                    self.cfg.coll_name,
+                    self._sentry_enabled,
+                )
+                logger.info("Applied sharded strategy with _id hash shard key")
+            else:
+                # For replica sets, no sharding needed
+                logger.info("Replica set cluster type - no sharding applied")
+
+            # Check what shard key was actually used
+            self._detect_shard_key(coll)
+        except Exception as e:
+            logger.debug("Sharding setup failed (best-effort): %s", e)
+            if self._sentry_enabled:
+                try:
+                    import sentry_sdk
+
+                    sentry_sdk.capture_exception(e)
+                except Exception:
+                    pass
 
     def _prepare_collection(self, coll: Collection):
         try:
@@ -197,7 +235,16 @@ class WorkloadRunner:
 
     def _make_doc(self, k: int) -> dict:
         fk = self._get_faker()
-        loc_code = fk.country_code() if fk is not None else random.choice(ISO_ALPHA2)
+
+        # For geosharded clusters, ensure predictable location distribution
+        if self.cfg.cluster_type == ClusterType.GEOSHARDED:
+            # Use a deterministic approach for better shard distribution
+            loc_code = ISO_ALPHA2[k % len(ISO_ALPHA2)]
+        else:
+            # For other cluster types, use random or faker-generated location
+            loc_code = (
+                fk.country_code() if fk is not None else random.choice(ISO_ALPHA2)
+            )
 
         doc = {
             "k": int(k),

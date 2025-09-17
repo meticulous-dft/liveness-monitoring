@@ -176,27 +176,86 @@ def ensure_sharded_location_compound(
         return
     except Exception as e:
         logger.info(
-            "Compound shard step failed; trying fallback to _id hashed: %s",
+            "Compound shard step failed %s",
             e,
         )
         _capture(e)
 
-        # Fallback to simple _id hashed sharding
+
+def ensure_sharded_simple(
+    client,
+    db_name: str,
+    coll_name: str,
+    sentry_enabled: bool = False,
+) -> None:
+    """Best-effort: shard the collection on a simple hashed _id key for regular sharded clusters.
+    Uses {_id: 'hashed'} for even distribution across shards.
+    """
+
+    def _capture(e: Exception):
+        if HAS_SENTRY and sentry_enabled:
+            try:
+                sentry_sdk.capture_exception(e)  # type: ignore
+            except Exception:
+                pass
+
+    # Detect mongos
+    try:
         try:
-            client.admin.command(
-                {
-                    "shardCollection": f"{db_name}.{coll_name}",
-                    "key": {"_id": "hashed"},
-                }
-            )
+            hello = client.admin.command("hello")
+        except Exception:
+            hello = client.admin.command("isMaster")
+        is_mongos = (
+            bool(getattr(client, "is_mongos", False)) or hello.get("msg") == "isdbgrid"
+        )
+    except Exception:
+        is_mongos = False
+
+    if not is_mongos:
+        logger.info("Not connected via mongos; skipping sharding step")
+        return
+
+    # If already sharded, nothing to do
+    try:
+        stats = client[db_name].command("collStats", coll_name)
+        if stats.get("sharded"):
             logger.info(
-                "Fallback: Sharded %s.%s on {_id: 'hashed'}", db_name, coll_name
+                "Collection %s.%s already sharded; skipping", db_name, coll_name
             )
             return
-        except Exception as fallback_e:
-            logger.info(
-                "Fallback shard step also failed (likely already sharded or unauthorized): %s",
-                fallback_e,
-            )
-            _capture(fallback_e)
-            return
+    except Exception:
+        # collStats might fail if collection doesn't exist yet; proceed
+        pass
+
+    # Ensure collection exists
+    try:
+        client[db_name].create_collection(coll_name)
+    except Exception:
+        pass
+
+    # Enable sharding on DB (idempotent)
+    try:
+        client.admin.command({"enableSharding": db_name})
+    except Exception as e:
+        logger.debug("enableSharding skipped: %s", e)
+
+    # Try simple hashed _id shard key
+    try:
+        client.admin.command(
+            {
+                "shardCollection": f"{db_name}.{coll_name}",
+                "key": {"_id": "hashed"},
+            }
+        )
+        logger.info(
+            "Sharded %s.%s on {_id: 'hashed'}",
+            db_name,
+            coll_name,
+        )
+        return
+    except Exception as e:
+        logger.info(
+            "Simple shard step failed %s",
+            e,
+        )
+        _capture(e)

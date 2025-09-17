@@ -45,6 +45,7 @@ OPS_PER_SEC=50                       # Operations per second
 WORKERS=4                            # Number of worker threads
 MAX_POOL_SIZE=50                     # MongoDB connection pool size
 OP_MIX=find=70,insert=20,update=10   # Operation mix percentages
+CLUSTER_TYPE=replica_set             # Cluster type (replica_set, sharded, geosharded)
 SENTRY_DSN=<your-sentry-dsn>         # Sentry DSN for error monitoring
 LOG_LEVEL=INFO                       # Logging level
 ```
@@ -55,6 +56,42 @@ All environment variables can be overridden via command line:
 
 ```bash
 python main.py --help
+```
+
+## Cluster Types
+
+The tool supports different MongoDB cluster configurations with appropriate sharding strategies:
+
+### Replica Set (`replica_set`)
+
+- **Default behavior**: No sharding is applied
+- **Use case**: Single replica set deployments
+- **Data distribution**: Documents are stored normally without sharding considerations
+
+### Sharded (`sharded`)
+
+- **Sharding strategy**: Uses `{_id: "hashed"}` shard key
+- **Use case**: Regular sharded clusters where even distribution across shards is desired
+- **Data distribution**: Documents are distributed evenly across shards based on hashed `_id`
+
+### Geosharded (`geosharded`)
+
+- **Sharding strategy**: Uses `{location: 1, _id: "hashed"}` compound shard key
+- **Use case**: MongoDB Atlas Global Clusters with zone-based sharding
+- **Data distribution**: Documents are routed by location field first, then distributed within zones
+- **Location handling**: Uses deterministic location assignment for predictable shard targeting
+
+You can specify the cluster type using:
+
+```bash
+# For replica set (default)
+python main.py --cluster-type replica_set
+
+# For regular sharded cluster
+python main.py --cluster-type sharded
+
+# For geosharded/global cluster
+python main.py --cluster-type geosharded
 ```
 
 ## Usage

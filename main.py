@@ -9,7 +9,7 @@ import threading
 from pymongo import MongoClient
 
 from liveness.monitoring import log_cluster_info, register_sentry_heartbeat_listener
-from liveness.workload import WorkloadRunner
+from liveness.workload import ClusterType, WorkloadRunner
 
 try:
     import sentry_sdk  # type: ignore
@@ -105,6 +105,12 @@ def parse_args():
         help="Operation mix percentages, e.g. find=70,insert=20,update=10",
     )
     p.add_argument(
+        "--cluster-type",
+        choices=["replica_set", "sharded", "geosharded"],
+        default=os.getenv("CLUSTER_TYPE", "replica_set"),
+        help="Cluster type for sharding strategy (replica_set, sharded, geosharded)",
+    )
+    p.add_argument(
         "--sentry-dsn",
         default=os.getenv("SENTRY_DSN", ""),
         help="Sentry DSN (optional)",
@@ -171,6 +177,9 @@ def main():
     if not op_mix:
         op_mix = {"find": 0.7, "insert": 0.2, "update": 0.1}
 
+    # Convert cluster type string to enum
+    cluster_type = ClusterType(args.cluster_type)
+
     # Register Sentry heartbeat listener to capture connectivity issues not surfaced as exceptions
     register_sentry_heartbeat_listener(sentry_enabled)
 
@@ -182,6 +191,7 @@ def main():
         ops_per_sec=args.ops_per_sec,
         workers=args.workers,
         op_mix=op_mix,
+        cluster_type=cluster_type,
         sentry_enabled=sentry_enabled,
     )
 
