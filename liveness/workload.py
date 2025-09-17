@@ -260,9 +260,10 @@ class WorkloadRunner:
                 if random.random() < 0.3:
                     profile["website"] = fk.url()
                 if random.random() < 0.3:
-                    profile["birthdate"] = fk.date_of_birth(
-                        minimum_age=18, maximum_age=90
-                    )
+                    birth_date = fk.date_of_birth(minimum_age=18, maximum_age=90)
+                    profile["birthdate"] = datetime.combine(
+                        birth_date, datetime.min.time()
+                    ).replace(tzinfo=timezone.utc)
                 # Preferences and flags
                 preferences = {
                     "newsletter": fk.boolean(),
